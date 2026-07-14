@@ -28,6 +28,21 @@ interface QualificacaoIA {
 
 const anthropic = new Anthropic();
 
+/**
+ * Extrai um objeto JSON do texto retornado pela IA, tolerando cercas de código
+ * (```json) e eventual texto ao redor. Mantém o app resiliente sem depender de
+ * parâmetros tipados específicos da versão do SDK.
+ */
+function extrairJson<T>(texto: string): T {
+  const limpo = texto.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const inicio = limpo.indexOf("{");
+  const fim = limpo.lastIndexOf("}");
+  if (inicio === -1 || fim === -1 || fim < inicio) {
+    throw new Error("Nenhum JSON encontrado na resposta da IA.");
+  }
+  return JSON.parse(limpo.slice(inicio, fim + 1)) as T;
+}
+
 /** Campos obrigatórios do formulário. */
 const CAMPOS_OBRIGATORIOS: (keyof LeadInput)[] = [
   "empresa",
@@ -39,7 +54,8 @@ const CAMPOS_OBRIGATORIOS: (keyof LeadInput)[] = [
 
 /**
  * Constrói o prompt e chama o Claude para qualificar o lead e gerar o
- * briefing. Usa structured outputs para garantir JSON válido e limpo.
+ * briefing. A IA é instruída a devolver JSON puro; `extrairJson` faz a
+ * leitura resiliente (tolerando cercas de código).
  */
 async function qualificarLead(lead: LeadInput): Promise<QualificacaoIA> {
   const systemPrompt = [
@@ -58,6 +74,12 @@ async function qualificarLead(lead: LeadInput): Promise<QualificacaoIA> {
     "",
     "Escreva o briefing em português do Brasil, objetivo e profissional.",
     "Não invente dados que o lead não forneceu; infira com prudência quando necessário.",
+    "",
+    "Responda APENAS com um objeto JSON válido, sem texto fora do JSON e sem cercas de código,",
+    "no formato exato:",
+    '{"nota_qualificacao": <0-100>, "potencial_fechamento": "alto|medio|baixo",',
+    '"briefing": {"objetivo_principal": "...", "publico_alvo": "...",',
+    '"funcionalidades_chave": ["...", "..."], "desafios_tecnicos": "..."}}',
   ].join("\n");
 
   const userPrompt = [
@@ -77,62 +99,15 @@ async function qualificarLead(lead: LeadInput): Promise<QualificacaoIA> {
   const response = await anthropic.messages.create({
     model: "claude-opus-4-8",
     max_tokens: 1500,
-    thinking: { type: "adaptive" },
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-    output_config: {
-      format: {
-        type: "json_schema",
-        schema: {
-          type: "object",
-          properties: {
-            nota_qualificacao: {
-              type: "integer",
-              minimum: 0,
-              maximum: 100,
-              description:
-                "Nota de 0 a 100 pela clareza do escopo e compatibilidade de orçamento.",
-            },
-            potencial_fechamento: {
-              type: "string",
-              enum: ["alto", "medio", "baixo"],
-            },
-            briefing: {
-              type: "object",
-              properties: {
-                objetivo_principal: { type: "string" },
-                publico_alvo: { type: "string" },
-                funcionalidades_chave: {
-                  type: "array",
-                  items: { type: "string" },
-                },
-                desafios_tecnicos: { type: "string" },
-              },
-              required: [
-                "objetivo_principal",
-                "publico_alvo",
-                "funcionalidades_chave",
-                "desafios_tecnicos",
-              ],
-              additionalProperties: false,
-            },
-          },
-          required: [
-            "nota_qualificacao",
-            "potencial_fechamento",
-            "briefing",
-          ],
-          additionalProperties: false,
-        },
-      },
-    },
   });
 
   const textBlock = response.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("A IA não retornou conteúdo de texto.");
   }
-  return JSON.parse(textBlock.text) as QualificacaoIA;
+  return extrairJson<QualificacaoIA>(textBlock.text);
 }
 
 /** Qualificação de fallback quando a IA está indisponível. */

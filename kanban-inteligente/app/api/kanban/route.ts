@@ -77,9 +77,24 @@ interface AnaliseBloqueio {
 const anthropic = new Anthropic();
 
 /**
+ * Extrai um objeto JSON do texto retornado pela IA, tolerando cercas de código
+ * (```json) e eventual texto ao redor. Mantém o app resiliente sem depender de
+ * parâmetros tipados específicos da versão do SDK.
+ */
+function extrairJson<T>(texto: string): T {
+  const limpo = texto.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const inicio = limpo.indexOf("{");
+  const fim = limpo.lastIndexOf("}");
+  if (inicio === -1 || fim === -1 || fim < inicio) {
+    throw new Error("Nenhum JSON encontrado na resposta da IA.");
+  }
+  return JSON.parse(limpo.slice(inicio, fim + 1)) as T;
+}
+
+/**
  * Constrói e envia o prompt de engenharia para o Claude gerar a análise de
- * bloqueio. Usa structured outputs (`output_config.format`) para garantir um
- * JSON válido, sem preâmbulo nem cercas de código.
+ * bloqueio. A IA é instruída a devolver JSON puro; o parser acima garante a
+ * leitura resiliente.
  */
 async function gerarAnaliseBloqueio(
   tarefa: Tarefa,
@@ -95,6 +110,9 @@ async function gerarAnaliseBloqueio(
     "A notificação ao cliente deve ser cordial, empática e firme, deixando claro que",
     "revisões adicionais estão fora do escopo contratado e exigem novo acordo comercial,",
     "sem soar hostil. Não invente valores monetários nem prazos específicos.",
+    "Responda APENAS com um objeto JSON válido, sem texto fora do JSON e sem cercas de código,",
+    'no formato: {"gravidade":"baixa|media|alta","justificativa_interna":"...",',
+    '"notificacao_cliente":"...","acao_recomendada":"..."}.',
   ].join(" ");
 
   const userPrompt = [
@@ -114,47 +132,15 @@ async function gerarAnaliseBloqueio(
   const response = await anthropic.messages.create({
     model: "claude-opus-4-8",
     max_tokens: 1024,
-    thinking: { type: "adaptive" },
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-    output_config: {
-      format: {
-        type: "json_schema",
-        schema: {
-          type: "object",
-          properties: {
-            gravidade: { type: "string", enum: ["baixa", "media", "alta"] },
-            justificativa_interna: {
-              type: "string",
-              description: "Explicação do bloqueio para o dono da agência.",
-            },
-            notificacao_cliente: {
-              type: "string",
-              description: "Mensagem cordial e firme para enviar ao cliente.",
-            },
-            acao_recomendada: {
-              type: "string",
-              description: "Próximo passo prático sugerido ao gestor.",
-            },
-          },
-          required: [
-            "gravidade",
-            "justificativa_interna",
-            "notificacao_cliente",
-            "acao_recomendada",
-          ],
-          additionalProperties: false,
-        },
-      },
-    },
   });
 
-  // Com output_config.format, o primeiro bloco de texto é JSON válido.
   const textBlock = response.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("A IA não retornou conteúdo de texto.");
   }
-  return JSON.parse(textBlock.text) as AnaliseBloqueio;
+  return extrairJson<AnaliseBloqueio>(textBlock.text);
 }
 
 export async function POST(request: Request) {
