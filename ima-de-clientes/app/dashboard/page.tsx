@@ -1,63 +1,35 @@
 import Link from "next/link";
 import { LeadCard } from "@/components/dashboard/LeadCard";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { Lead } from "@/lib/types";
 
-/**
- * Dados de DEMONSTRAÇÃO para revisar a interface do dashboard.
- * Serão substituídos por leitura real do Supabase quando o agente de IA
- * (rota /api/leads) estiver ligado.
- */
-const LEADS_DEMO: Lead[] = [
-  {
-    id: "demo-1",
-    empresa: "Clínica Vitalis",
-    site: "https://vitalis.com.br",
-    contato: "Dra. Helena Rocha",
-    email: "helena@vitalis.com.br",
-    telefone: "(11) 90000-0000",
-    segmento: "Saúde",
-    escopo:
-      "Reformular o site e criar um portal de agendamento com integração ao prontuário.",
-    orcamento: "R$ 40.000 – R$ 60.000",
-    prazo: "90 dias",
-    status: "briefing_gerado",
-    nota_qualificacao: 88,
-    potencial_fechamento: "alto",
-    briefing: {
-      objetivo_principal:
-        "Modernizar a presença digital da clínica e reduzir faltas com agendamento online integrado ao prontuário.",
-      publico_alvo: "Pacientes 30–60 anos da região metropolitana.",
-      funcionalidades_chave: [
-        "Portal de agendamento",
-        "Integração com prontuário",
-        "Site institucional novo",
-      ],
-      desafios_tecnicos:
-        "Integração com o sistema de prontuário legado e conformidade com dados sensíveis de saúde.",
-    },
-    created_at: "2026-07-12T10:00:00Z",
-  },
-  {
-    id: "demo-2",
-    empresa: "Loja Norte",
-    site: null,
-    contato: "Marcos Lima",
-    email: "marcos@lojanorte.com",
-    telefone: null,
-    segmento: "E-commerce",
-    escopo: "Quero um site de vendas simples e barato o quanto antes.",
-    orcamento: "Até R$ 5.000",
-    prazo: "15 dias",
-    status: "qualificado",
-    nota_qualificacao: 34,
-    potencial_fechamento: "baixo",
-    briefing: null,
-    created_at: "2026-07-13T09:20:00Z",
-  },
-];
+// Sempre renderiza no request (lista de leads muda a cada envio).
+export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
-  const leads = LEADS_DEMO;
+/** Busca os leads reais no Supabase, dos mais recentes para os mais antigos. */
+async function carregarLeads(): Promise<{ leads: Lead[]; erro: string | null }> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) return { leads: [], erro: error.message };
+    return { leads: (data as Lead[]) ?? [], erro: null };
+  } catch (err) {
+    return {
+      leads: [],
+      erro:
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar os leads.",
+    };
+  }
+}
+
+export default async function DashboardPage() {
+  const { leads, erro } = await carregarLeads();
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10">
@@ -68,6 +40,9 @@ export default function DashboardPage() {
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
             Qualificação e briefings gerados automaticamente pela IA.
+            {leads.length > 0 && (
+              <span className="text-zinc-600"> · {leads.length} no total</span>
+            )}
           </p>
         </div>
         <Link
@@ -78,7 +53,11 @@ export default function DashboardPage() {
         </Link>
       </header>
 
-      {leads.length > 0 ? (
+      {erro ? (
+        <div className="rounded-2xl border border-red-500/25 bg-red-950/20 px-4 py-3 text-sm text-red-300">
+          Falha ao carregar os leads: {erro}
+        </div>
+      ) : leads.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {leads.map((lead) => (
             <LeadCard key={lead.id} lead={lead} />
@@ -86,7 +65,8 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-line py-20 text-center text-sm text-zinc-600">
-          Nenhum lead ainda.
+          Nenhum lead ainda. Assim que um projeto for enviado pelo formulário
+          público, ele aparece aqui.
         </div>
       )}
     </main>

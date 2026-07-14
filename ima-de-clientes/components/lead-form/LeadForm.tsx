@@ -40,17 +40,26 @@ export function LeadForm() {
     setEnviando(true);
     setErro(null);
     try {
-      // TODO (próximo passo): POST /api/leads → qualifica + gera briefing via IA.
+      // POST /api/leads → o agente de IA qualifica e gera o briefing.
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error(`Erro ${res.status} ao enviar.`);
+
+      if (!res.ok) {
+        const corpo = await res.json().catch(() => ({}));
+        throw new Error(corpo?.erro ?? `Erro ${res.status} ao enviar o projeto.`);
+      }
+
+      // Sucesso confirmado pela API → tela de sucesso premium.
       setEnviado(true);
-    } catch {
-      // Enquanto a rota não existe, apenas confirmamos o recebimento local.
-      setEnviado(true);
+    } catch (err) {
+      setErro(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível enviar agora. Tente novamente em instantes.",
+      );
     } finally {
       setEnviando(false);
     }

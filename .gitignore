@@ -19,6 +19,9 @@ dist/
 .vscode/
 .idea/
 
+# Vercel (arquivos de link do projeto)
+.vercel/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
