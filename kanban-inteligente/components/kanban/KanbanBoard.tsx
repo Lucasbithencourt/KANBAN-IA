@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import type { MovimentacaoResponse, Status, Task } from "@/lib/types";
 import { BLOCKED_STATUS, COLUMNS } from "@/lib/data";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { KanbanColumn } from "./KanbanColumn";
+import { TaskFormModal } from "./TaskFormModal";
 
 /** Colunas usadas no SELECT do Supabase (nomes exatos da tabela `tarefas`). */
 const TAREFA_COLUMNS =
@@ -22,6 +24,12 @@ export function KanbanBoard() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [modalAberto, setModalAberto] = useState(false);
+
+  // Insere a tarefa recém-criada no board (aparece em 'a_fazer' na hora).
+  const handleCreated = useCallback((tarefa: Task) => {
+    setTasks((prev) => [...prev, tarefa]);
+  }, []);
 
   // --- Carregamento inicial a partir do banco --------------------------------
   useEffect(() => {
@@ -138,6 +146,17 @@ export function KanbanBoard() {
 
   return (
     <div className="flex h-full flex-col">
+      <div className="mb-3 flex shrink-0 items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setModalAberto(true)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface-raised px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-surface-hover"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+          Nova Tarefa
+        </button>
+      </div>
+
       {(erro || aviso) && (
         <div
           className={[
@@ -161,6 +180,12 @@ export function KanbanBoard() {
           />
         ))}
       </div>
+
+      <TaskFormModal
+        open={modalAberto}
+        onClose={() => setModalAberto(false)}
+        onCreated={handleCreated}
+      />
     </div>
   );
 }

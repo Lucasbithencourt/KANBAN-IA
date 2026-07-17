@@ -21,6 +21,12 @@ export interface Column {
   hint?: string;
 }
 
+/** Opção de projeto para o dropdown de criação de tarefa. */
+export interface ProjetoOption {
+  id: string;
+  nome: string;
+}
+
 /**
  * Uma tarefa individual. Os nomes de campo espelham a tabela `tarefas`
  * para manter a tipagem consistente de ponta a ponta.
